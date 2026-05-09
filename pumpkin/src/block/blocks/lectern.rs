@@ -1,5 +1,5 @@
 use std::sync::Arc;
-
+use tokio::sync::Mutex;
 use crate::block::registry::BlockActionResult;
 use crate::block::{
     BlockBehaviour, BlockFuture, BrokenArgs, NormalUseArgs, OnPlaceArgs, PlacedArgs,
@@ -8,17 +8,46 @@ use crate::block::{
 use crate::entity::Entity;
 use crate::entity::item::ItemEntity;
 use crate::world::World;
-use pumpkin_data::Block;
+use pumpkin_data::{translation, Block};
 use pumpkin_data::block_properties::{BlockProperties, LecternLikeProperties};
 use pumpkin_data::entity::EntityType;
+use pumpkin_inventory::generic_container_screen_handler::create_hopper;
+use pumpkin_inventory::lectern::lectern_screen_handler::create_lectern;
+use pumpkin_inventory::player::player_inventory::PlayerInventory;
+use pumpkin_inventory::screen_handler::{BoxFuture, InventoryPlayer, ScreenHandlerFactory, SharedScreenHandler};
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::text::TextComponent;
+use pumpkin_world::block::entities::BlockEntity;
 use pumpkin_world::BlockStateId;
 use pumpkin_world::block::entities::lectern::LecternBlockEntity;
 use pumpkin_world::inventory::Inventory;
 use pumpkin_world::world::BlockFlags;
 
+struct LecternScreenFactory(
+    Arc<dyn pumpkin_world::block::entities::PropertyDelegate>,
+);
+impl ScreenHandlerFactory for LecternScreenFactory {
+    fn create_screen_handler<'a>(&'a self, sync_id: u8, player_inventory: &'a Arc<PlayerInventory>, player: &'a dyn InventoryPlayer) -> BoxFuture<'a, Option<SharedScreenHandler>> {
+        Box::pin(async move {
+            let property_delegate=self.0.clone();
+            let concrete_handler = create_lectern(sync_id, property_delegate).await;
+
+            let concrete_arc = Arc::new(Mutex::new(concrete_handler));
+
+            Some(concrete_arc as SharedScreenHandler)
+        })
+    }
+
+    fn get_display_name(&self) -> TextComponent {
+        TextComponent::translate_cross(
+            translation::java::CONTAINER_LECTERN,
+            translation::bedrock::TILE_LECTERN_NAME,
+            &[],
+        )
+    }
+}
 #[pumpkin_block("minecraft:lectern")]
 pub struct LecternBlock;
 
@@ -68,6 +97,12 @@ impl BlockBehaviour for LecternBlock {
                 if !book.is_empty() {
                     // Logic to give the book to the player
                     // Need to find a proper way to give items to player. For now skip.
+
+                    if let Some(pd)=block_entity.clone().to_property_delegate(){
+                        println!("Opening Screen...");
+                        args.player.open_handled_screen(&LecternScreenFactory(pd),Some(*args.position)).await;
+                    }
+
 
                     let mut props = LecternLikeProperties::from_state_id(
                         args.world.get_block_state(args.position).await.id,
@@ -142,3 +177,4 @@ impl BlockBehaviour for LecternBlock {
         })
     }
 }
+

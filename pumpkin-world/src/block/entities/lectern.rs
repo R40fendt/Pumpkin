@@ -15,11 +15,13 @@ use crate::{
     block::entities::BlockEntity,
     inventory::{Clearable, Inventory, InventoryFuture},
 };
+use crate::block::entities::PropertyDelegate;
 
 pub struct LecternBlockEntity {
     pub position: BlockPos,
     pub book: Arc<Mutex<ItemStack>>,
     pub dirty: AtomicBool,
+    pub page: i32
 }
 
 impl BlockEntity for LecternBlockEntity {
@@ -40,11 +42,13 @@ impl BlockEntity for LecternBlockEntity {
             .and_then(ItemStack::read_item_stack)
             .map(|stack| Arc::new(Mutex::new(stack)))
             .unwrap_or_else(|| Arc::new(Mutex::new(ItemStack::EMPTY.clone())));
+        let page=nbt.get_int("Page").unwrap_or(0);
 
         Self {
             position,
             book,
             dirty: AtomicBool::new(false),
+            page
         }
     }
 
@@ -77,6 +81,9 @@ impl BlockEntity for LecternBlockEntity {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+    fn to_property_delegate(self: Arc<Self>) -> Option<Arc<dyn PropertyDelegate>> {
+        Some(self as Arc<dyn PropertyDelegate>)
+    }
 }
 
 impl LecternBlockEntity {
@@ -88,8 +95,10 @@ impl LecternBlockEntity {
             position,
             book: Arc::new(Mutex::new(ItemStack::EMPTY.clone())),
             dirty: AtomicBool::new(false),
+            page: 0
         }
     }
+
 }
 
 impl Inventory for LecternBlockEntity {
@@ -149,5 +158,21 @@ impl Clearable for LecternBlockEntity {
             *self.book.lock().await = ItemStack::EMPTY.clone();
             self.mark_dirty();
         })
+    }
+}
+
+impl PropertyDelegate for LecternBlockEntity {
+    fn get_property(&self, index: i32) -> i32 {
+        let page=self.page;
+        match index {
+            0 => page,
+            _ => 0
+        }
+    }
+
+    fn set_property(&self, index: i32, value: i32) {}
+
+    fn get_properties_size(&self) -> i32 {
+        1
     }
 }
